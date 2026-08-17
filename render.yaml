@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: tokyo-dotcomu
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build && npm run seed
+    startCommand: npm start
+    healthCheckPath: /api/venues
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+# db/tokyo-dotcomu.sqlite はGitHub Actions(scrape.yml)がコミットして永続化するため追跡対象
+db/*.sqlite-journal
+db/*.sqlite-wal
+db/*.sqlite-shm
+*.log
+.env

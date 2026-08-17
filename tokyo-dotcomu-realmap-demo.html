@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>東京どっと混む — 実地図デモ</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #161b26; }
+  body {
+    color: #e7eaf1;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Segoe UI", sans-serif;
+    padding: 24px 20px 40px;
+    font-size: 15px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  .mono { font-family: "SFMono-Regular", Consolas, "Courier New", monospace; }
+
+  .header-row { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 10px; }
+  .live { display: flex; align-items: center; gap: 10px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #d97a52; }
+  .live-label { font-size: 13px; letter-spacing: 2.5px; color: #d97a52; font-weight: 700; }
+  h1 { font-size: 31px; font-weight: 900; margin: 8px 0 0; letter-spacing: -0.5px; }
+  h1 span.brand { color: #d97a52; }
+  .subtitle { font-size: 15px; color: #97a1b3; margin-top: 5px; }
+
+  .filters { display: flex; gap: 10px; margin-top: 18px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  select {
+    background: #1e2531; border: 1px solid #303a4a; color: #e7eaf1;
+    border-radius: 6px; padding: 8px 11px; font-size: 14.5px;
+  }
+  .count { margin-left: auto; font-size: 13.5px; color: #8792a6; }
+  .hint { font-size: 13px; color: #8792a6; }
+
+  .period-switch { display: flex; background: #1e2531; border: 1px solid #303a4a; border-radius: 6px; overflow: hidden; flex-shrink: 0; }
+  .period-switch button {
+    background: transparent; border: none; color: #8792a6; font-size: 12.5px; padding: 5px 11px;
+    cursor: pointer; border-right: 1px solid #303a4a; transition: all 0.12s;
+  }
+  .period-switch button:last-child { border-right: none; }
+  .period-switch button.active { background: #262f40; color: #e7eaf1; font-weight: 700; }
+  .period-switch button:hover { color: #cbd2e0; }
+
+  .station-toggle-btn {
+    background: #1e2531; border: 1px solid #303a4a; color: #97a1b3;
+    border-radius: 6px; padding: 8px 13px; font-size: 13.5px; cursor: pointer; transition: all 0.12s;
+  }
+  .station-toggle-btn.active { background: #232b3a; border-color: #3a4658; color: #e7eaf1; }
+  .station-toggle-btn:hover { border-color: #3a4658; }
+
+  .layout-grid {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    grid-template-areas: "map sidebar" "timeline timeline";
+    gap: 14px;
+    align-items: start;
+  }
+  .map-panel {
+    grid-area: map;
+    position: relative; border-radius: 14px; border: 1px solid #262e3c; overflow: hidden;
+    min-width: 0;
+  }
+  #map { width: 100%; height: 520px; background: #161b26; }
+
+  .venue-toggle-btn {
+    display: none; align-items: center; gap: 8px; background: #1e2531; border: 1px solid #303a4a;
+    color: #e7eaf1; border-radius: 6px; padding: 8px 13px; font-size: 14px; cursor: pointer;
+  }
+  .venue-toggle-btn .burger {
+    width: 16px; height: 12px; display: inline-flex; flex-direction: column; justify-content: space-between; flex-shrink: 0;
+  }
+  .venue-toggle-btn .burger span { display: block; width: 100%; height: 2px; background: #e7eaf1; border-radius: 1px; }
+
+  .sidebar-scrim { display: none; }
+
+  .legend {
+    position: absolute; top: 14px; right: 14px; z-index: 500;
+    background: #171d29e6; border: 1px solid #2c3546; border-radius: 8px;
+    padding: 11px 15px;
+  }
+  .legend-title { font-size: 12px; color: #97a1b3; letter-spacing: 1px; margin-bottom: 9px; }
+  .legend-bar { width: 168px; height: 9px; border-radius: 4px;
+    background: linear-gradient(90deg, #4a7ba6, #5fa79a, #d1ac52, #cf8752, #c2585c); }
+  .legend-labels { display: flex; justify-content: space-between; font-size: 11px; color: #8792a6; margin-top: 5px; }
+  .attrib-note {
+    position: absolute; bottom: 8px; left: 12px; z-index: 500;
+    font-size: 10.5px; color: #8792a6; background: #171d29cc; padding: 2px 7px; border-radius: 4px;
+  }
+
+  /* ---------- Windy-style timeline ---------- */
+  .timeline {
+    grid-area: timeline;
+    border: 1px solid #262e3c; border-radius: 14px;
+    background: #1a202c; padding: 15px 20px 13px; margin-top: 0;
+  }
+  .timeline-top { display: flex; align-items: center; gap: 14px; margin-bottom: 11px; }
+  .play-btn {
+    width: 36px; height: 36px; border-radius: 50%; background: #cf7550; border: none;
+    color: #14181f; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: background 0.15s;
+  }
+  .play-btn:hover { background: #db8562; }
+  .time-display { font-size: 24px; font-weight: 800; font-family: "SFMono-Regular", Consolas, monospace; letter-spacing: 0.5px; }
+  .time-display .date-part { font-size: 13.5px; color: #97a1b3; font-weight: 500; display: block; margin-bottom: 2px; }
+  .phase-badge {
+    margin-left: auto; font-size: 13px; padding: 5px 11px; border-radius: 12px;
+    background: #232b3a; border: 1px solid #303a4a; color: #b7c0d1; transition: background 0.3s;
+  }
+  .phase-badge.pulse-once { background: #2c3a4a; }
+
+  .timeline-scope-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .timeline-scope-hint { font-size: 11.5px; color: #5c6478; }
+
+  .timeline-hover-wrap { position: relative; }
+
+  .heat-strip {
+    position: relative;
+    width: 100%; height: 22px; border-radius: 6px; overflow: hidden;
+    border: 1px solid #262e3c; margin-bottom: 8px;
+    filter: saturate(1.05);
+    box-shadow: inset 0 0 12px #00000040;
+    cursor: crosshair;
+  }
+  .heat-strip::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, #ffffff14 0%, transparent 40%, #00000022 100%);
+    pointer-events: none;
+  }
+
+  .now-marker {
+    position: absolute; top: -3px; width: 2px; height: 28px; background: #e7eaf1;
+    box-shadow: 0 0 5px #e7eaf1aa; pointer-events: none; z-index: 3; transform: translateX(-1px);
+    transition: left 0.06s linear;
+  }
+  .hover-marker {
+    position: absolute; top: -3px; width: 1px; height: 28px; background: #ffffff77;
+    pointer-events: none; z-index: 2; display: none;
+  }
+  .hover-tooltip {
+    position: absolute; bottom: 100%; margin-bottom: 8px; transform: translateX(-50%);
+    background: #1c2330f5; border: 1px solid #303a4a; border-radius: 6px;
+    padding: 6px 10px; font-size: 13px; white-space: nowrap; pointer-events: none;
+    display: none; z-index: 4; box-shadow: 0 6px 16px #00000055;
+  }
+  .hover-tooltip .ht-time { font-family: "SFMono-Regular", Consolas, monospace; font-weight: 700; color: #e7eaf1; }
+  .hover-tooltip .ht-score { margin-left: 6px; font-family: "SFMono-Regular", Consolas, monospace; }
+
+  .slider-track-wrap { position: relative; padding: 4px 0 0; }
+  input[type="range"].tl-slider {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 4px;
+    background: #262e3c; outline: none; margin: 0; cursor: pointer;
+  }
+  input[type="range"].tl-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 19px; height: 19px; border-radius: 50%;
+    background: #cf7550; border: 3px solid #14181f; cursor: grab; margin-top: -1px;
+  }
+  input[type="range"].tl-slider::-moz-range-thumb {
+    width: 19px; height: 19px; border-radius: 50%; background: #cf7550; border: 3px solid #14181f;
+    cursor: grab;
+  }
+
+  .day-ticks { display: flex; margin-top: 10px; }
+  .day-tick {
+    flex: 1; text-align: center; cursor: pointer; padding: 7px 2px 5px; border-radius: 6px;
+    border-right: 1px solid #262e3c; position: relative;
+  }
+  .day-tick:last-child { border-right: none; }
+  .day-tick:hover { background: #1e2530; }
+  .day-tick.active { background: #232b3a; }
+  .day-tick .dlabel { font-size: 13.5px; color: #cbd2e0; font-weight: 600; }
+  .day-tick .dsub { font-size: 11px; color: #78829a; margin-top: 1px; }
+  .day-tick .alert-dot {
+    width: 6px; height: 6px; border-radius: 50%; margin: 0 auto 3px; background: #d97a52;
+  }
+  .day-tick .alert-dot.none { background: transparent; }
+
+  .sidebar-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-shrink: 0; }
+  .sidebar-tab {
+    flex: 1; background: #171c26; border: 1px solid #262e3c; color: #8792a6;
+    border-radius: 7px; padding: 7px 0; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.12s;
+  }
+  .sidebar-tab.active { background: #262f40; border-color: #3a4658; color: #e7eaf1; }
+  .sidebar-tab:hover { color: #cbd2e0; }
+
+  .line-group { margin-bottom: 4px; }
+  .line-group-title {
+    display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #97a1b3;
+    padding: 6px 2px 5px; letter-spacing: 0.3px;
+  }
+  .line-group-title .ldot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .station-side-item {
+    background: #1e2531; border: 1px solid #2c3546; border-radius: 7px; padding: 8px 11px;
+    cursor: pointer; text-align: left; font-size: 13.5px; color: #dfe3ec; margin-bottom: 6px;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .station-side-item:hover { background: #232b3a; border-color: #3a4557; }
+
+  .venue-sidebar {
+    grid-area: sidebar;
+    width: 100%; height: 520px; background: #1a202c; border: 1px solid #262e3c; border-radius: 14px;
+    padding: 15px; display: flex; flex-direction: column; min-width: 0;
+  }
+  .venue-sidebar-title { font-size: 13px; color: #97a1b3; letter-spacing: 1px; margin-bottom: 11px; flex-shrink: 0; }
+  .venue-sidebar-title .vcount { color: #d97a52; }
+  .venue-sidebar-list { display: flex; flex-direction: column; gap: 7px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+  .venue-side-item {
+    background: #1e2531; border: 1px solid #2c3546; border-radius: 8px; padding: 10px 12px;
+    cursor: pointer; text-align: left; transition: background 0.12s, border-color 0.12s;
+  }
+  .venue-side-item:hover { background: #232b3a; border-color: #3a4557; }
+  .venue-side-item.selected { background: #262f40; border-color: #cf7550; }
+  .venue-side-item .vname { font-size: 14.5px; font-weight: 700; color: #e7eaf1; display: flex; align-items: center; gap: 7px; }
+  .venue-side-item .vname .vdotstatus { width: 8px; height: 8px; border-radius: 50%; background: #3f4a5e; flex-shrink: 0; }
+  .venue-side-item .varea { font-size: 12px; color: #8792a6; margin-top: 2px; }
+  .venue-side-item .vstations { font-size: 12.5px; color: #97a1b3; margin-top: 5px; line-height: 1.5; }
+  .venue-side-item.all-tokyo { background: #232b3a; border-color: #3a4658; margin-bottom: 2px; }
+  .venue-side-item.all-tokyo .vname { color: #d9a17c; }
+  .venue-side-item.all-tokyo.selected { border-color: #cf7550; }
+
+  .disclaimer-banner {
+    display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap;
+    font-size: 13px; color: #78829a; margin-top: 10px; padding: 7px 2px;
+    border-top: 1px solid #262e3c;
+  }
+  .disclaimer-banner .db-icon { font-size: 13px; opacity: 0.65; }
+  .disclaimer-banner .db-text { line-height: 1.7; }
+  .disclaimer-banner .db-text b { color: #97a1b3; font-weight: 600; }
+  .disclaimer-banner .db-feedback { color: #8792a6; text-decoration: underline; text-underline-offset: 2px; }
+  .disclaimer-banner .db-feedback:hover { color: #b7c0d1; }
+
+  .footnote { margin-top: 26px; font-size: 12.5px; color: #5c6478; text-align: center; line-height: 1.7; }
+
+  /* leaflet theme overrides */
+  .leaflet-container { background: #161b26; font-family: inherit; }
+  .leaflet-tile-pane { filter: brightness(1.15) saturate(0.85) hue-rotate(-8deg); }
+  .leaflet-popup-content-wrapper { background: #1c2330; color: #e7eaf1; border: 1px solid #303a4a; border-radius: 8px; }
+  .leaflet-popup-tip { background: #1c2330; }
+  .leaflet-popup-content { font-size: 14px; margin: 11px 13px; }
+  .leaflet-popup-content .tt-title { font-weight: 700; font-size: 15px; margin-bottom: 5px; }
+  .leaflet-popup-content .tt-row { color: #b7c0d1; margin-top: 3px; }
+  .leaflet-popup-content .tt-level { font-weight: 700; margin-top: 7px; font-family: monospace; font-size: 14px; }
+  .leaflet-popup-content .tt-hint { margin-top: 7px; font-size: 12.5px; color: #8792a6; }
+  .leaflet-popup-content .tt-source { margin-top: 8px; padding-top: 7px; border-top: 1px solid #303a4a; font-size: 12.5px; color: #8792a6; }
+  .leaflet-popup-content .tt-source a { color: #d97a52; text-decoration: none; }
+  .leaflet-popup-content .tt-source a:hover { text-decoration: underline; }
+  .leaflet-control-zoom a { background: #1e2531 !important; color: #e7eaf1 !important; border-color: #303a4a !important; }
+  .venue-label-icon { color: #e7eaf1; font-size: 13.5px; font-weight: 700; text-shadow: 0 0 4px #161b26, 0 0 4px #161b26; white-space: nowrap; }
+  .station-label-icon { color: #cbd2e0; font-size: 12px; text-shadow: 0 0 4px #161b26, 0 0 4px #161b26; white-space: nowrap; }
+
+  @keyframes dashflow { to { stroke-dashoffset: -28; } }
+  .flow-line { animation: dashflow 1.4s linear infinite; transition: opacity 0.1s ease; }
+  .leaflet-interactive { transition: opacity 0.1s ease; }
+
+  @media (max-width: 760px) {
+    .layout-grid {
+      grid-template-columns: 1fr;
+      grid-template-areas: "map" "timeline";
+    }
+    .venue-toggle-btn { display: inline-flex; }
+    .venue-sidebar {
+      position: fixed; top: 0; right: 0; height: 100%; width: min(84vw, 320px);
+      z-index: 1000; border-radius: 0; border-left: 1px solid #262e3c; border-top: none; border-bottom: none; border-right: none;
+      transform: translateX(100%); transition: transform 0.22s ease; box-shadow: -8px 0 24px #00000055;
+      max-height: none;
+    }
+    .venue-sidebar.open { transform: translateX(0); }
+    .sidebar-scrim.open {
+      display: block; position: fixed; inset: 0; background: #000000aa; z-index: 999;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header-row">
+    <div>
+      <div class="live">
+        <span class="dot"></span>
+        <span class="live-label mono">LIVE MONITORING (DEMO DATA)</span>
+      </div>
+      <h1>東京<span class="brand">どっと</span>混む <span style="color:#4a5262; font-size:15px; font-weight:500;">— 実地図サーモマップ</span></h1>
+      <div class="subtitle">東京のイベント情報からひと目で混み具合が分かるマップ</div>
+    </div>
+  </div>
+
+  <div class="disclaimer-banner">
+    <span class="db-icon">ⓘ</span>
+    <span class="db-text">
+      表示中の混雑度は予測・目安であり、実際の状況を保証するものではありません。気づいた点があれば
+      <a class="db-feedback" href="mailto:feedback@example.com?subject=東京どっと混む フィードバック">こちら</a>
+      からお知らせください。精度向上に役立てます。
+    </span>
+  </div>
+
+  <div class="filters">
+    <select id="genreFilter">
+      <option value="all">ジャンル：すべて</option>
+      <option value="music">音楽・コンサート</option>
+      <option value="sports">スポーツ</option>
+      <option value="expo">展示会・見本市</option>
+      <option value="other">その他イベント</option>
+    </select>
+    <span class="hint">地図上の線・丸をクリックすると、開催イベントが表示されます</span>
+    <button class="station-toggle-btn active" id="stationToggleBtn">
+      <span class="label">駅名を表示中</span>
+    </button>
+    <button class="venue-toggle-btn" id="venueToggleBtn" aria-label="会場一覧を開く">
+      <span class="burger"><span></span><span></span><span></span></span> 会場一覧
+    </button>
+    <div class="count mono" id="countLabel"></div>
+  </div>
+
+  <div class="layout-grid">
+    <div class="map-panel">
+      <div id="map"></div>
+      <div class="legend">
+        <div class="legend-title mono">混雑スコア</div>
+        <div class="legend-bar"></div>
+        <div class="legend-labels mono"><span>空</span><span>注意</span><span>混雑</span><span>危険</span></div>
+      </div>
+      <div class="attrib-note">地図: © OpenStreetMap contributors © CARTO</div>
+    </div>
+
+    <div class="timeline">
+      <div class="timeline-top">
+        <button class="play-btn" id="playBtn">▶</button>
+        <div class="time-display">
+          <span class="date-part" id="dateLabel">-</span>
+          <span id="timeLabel">--:--</span>
+        </div>
+        <div class="phase-badge" id="phaseBadge">選択中の時刻の状況</div>
+      </div>
+      <div class="timeline-scope-row">
+        <div class="timeline-scope-hint mono">この帯は、現在地図に表示中の範囲の混雑を反映します（地図を動かすと連動）</div>
+        <div class="period-switch" id="periodSwitch">
+          <button data-days="1">1日</button>
+          <button data-days="3">3日</button>
+          <button data-days="7" class="active">1週間</button>
+        </div>
+      </div>
+      <div class="timeline-hover-wrap" id="hoverWrap">
+        <div class="heat-strip" id="heatStrip">
+          <div class="now-marker" id="nowMarker"></div>
+          <div class="hover-marker" id="hoverMarker"></div>
+        </div>
+        <div class="hover-tooltip" id="hoverTooltip">
+          <span class="ht-time" id="htTime">--:--</span><span class="ht-score" id="htScore"></span>
+        </div>
+        <div class="slider-track-wrap">
+          <input type="range" class="tl-slider" id="tlSlider" min="0" max="0" step="1" value="0" />
+        </div>
+      </div>
+      <div class="day-ticks" id="dayTicks"></div>
+    </div>
+
+    <div class="venue-sidebar" id="venueSidebar">
+      <div class="sidebar-tabs">
+        <button class="sidebar-tab active" data-tab="venue" id="tabVenueBtn">会場</button>
+        <button class="sidebar-tab" data-tab="station" id="tabStationBtn">駅名</button>
+      </div>
+      <div class="venue-sidebar-title mono" id="sidebarTitleVenue">モニタリング対象会場 <span class="vcount" id="venueCount"></span></div>
+      <div class="venue-sidebar-list" id="venueSidebarList"></div>
+      <div class="venue-sidebar-title mono" id="sidebarTitleStation" style="display:none;">都内の駅（路線別） <span class="vcount" id="stationCount"></span></div>
+      <div class="venue-sidebar-list" id="stationSidebarList" style="display:none;"></div>
+    </div>
+  </div>
+
+  <div class="sidebar-scrim" id="sidebarScrim"></div>
+
+  <div class="footnote mono">
+    ※ 本デモのイベント情報・混雑スコア・時間変化はすべてサンプルデータ／簡易モデルです。会場・駅の位置は概略座標です。<br>
+    ※ 終了時刻が未公開のイベントは、ジャンル・規模から所要時間を予測して算出しています（ポップアップに「(予測)」と表示）。
+  </div>
+</div>
+
+<script>
+// ---------- static data ----------
+const GENRE_LABEL = { music: "音楽・コンサート", sports: "スポーツ", expo: "展示会・見本市", other: "その他イベント" };
+const SCALE = { large: { label: "大規模", weight: 90 }, medium: { label: "中規模", weight: 55 }, small: { label: "小規模", weight: 25 } };
+const GENRE_MULT = { music: 1.15, sports: 1.1, expo: 0.9, other: 1.0 };
+
+function isoDate(offsetDays) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+const DAY_COUNT = 7; // full sample-data range (kept for EVENTS date references)
+const DAY_DATES = Array.from({ length: DAY_COUNT }, (_, i) => isoDate(i));
+
+const LINE = {
+  chuo:       { name: "JR中央・総武線",       color: "#e0b23a" },
+  marunouchi: { name: "東京メトロ丸ノ内線",   color: "#c2585c" },
+  namboku:    { name: "東京メトロ南北線",     color: "#5fa79a" },
+  tozai:      { name: "東京メトロ東西線",     color: "#5b9bb0" },
+  hanzomon:   { name: "東京メトロ半蔵門線",   color: "#8f7fc0" },
+  shinjuku:   { name: "都営新宿線",           color: "#b5a23a" },
+  rinkai:     { name: "りんかい線",           color: "#4a7ba6" },
+  oedo:       { name: "都営大江戸線",         color: "#c06a92" },
+  yamanote:   { name: "JR山手線",             color: "#8fae4a" },
+  yurakucho:  { name: "東京メトロ有楽町線",   color: "#b89a5e" },
+  yurikamome: { name: "ゆりかもめ",           color: "#6da0b3" },
+  mita:       { name: "都営三田線",           color: "#4a7ba6" },
+};
+
+const STATIONS = {
+  "水道橋駅":         { pos: [35.7020, 139.7527], lines: ["chuo","mita"] },
+  "後楽園駅":         { pos: [35.7075, 139.7517], lines: ["marunouchi","namboku"] },
+  "九段下駅":         { pos: [35.6944, 139.7530], lines: ["tozai","hanzomon","shinjuku"] },
+  "国際展示場駅":     { pos: [35.6296, 139.7955], lines: ["rinkai"] },
+  "東京テレポート駅": { pos: [35.6259, 139.7801], lines: ["rinkai"] },
+  "国立競技場駅":     { pos: [35.6789, 139.7147], lines: ["oedo"] },
+  "千駄ケ谷駅":       { pos: [35.6822, 139.7124], lines: ["chuo"] },
+  "有楽町駅":         { pos: [35.6749, 139.7628], lines: ["yamanote","yurakucho"] },
+  "代々木駅":         { pos: [35.6832, 139.7021], lines: ["yamanote","oedo"] },
+  "原宿駅":           { pos: [35.6702, 139.7027], lines: ["yamanote"] },
+  "お台場海浜公園駅": { pos: [35.6269, 139.7807], lines: ["yurikamome"] },
+};
+
+const VENUES = {
+  "tokyo-dome":   { name: "東京ドーム", area: "文京区", pos: [35.7056, 139.7519], stations: ["水道橋駅","後楽園駅"], officialUrl: "https://www.tokyo-dome.co.jp/dome/event/schedule.html" },
+  "budokan":      { name: "日本武道館", area: "千代田区", pos: [35.6935, 139.7502], stations: ["九段下駅"], officialUrl: "https://www.nipponbudokan.or.jp/" },
+  "bigsight":     { name: "東京ビッグサイト", area: "江東区", pos: [35.6300, 139.7930], stations: ["国際展示場駅","東京テレポート駅"], officialUrl: "https://www.bigsight.jp/visitor/event/" },
+  "ariake-arena": { name: "有明アリーナ", area: "江東区", pos: [35.6417, 139.7936], stations: ["国際展示場駅"], officialUrl: "https://ariake-arena.tokyo/event/" },
+  "kokuritsu":    { name: "国立競技場", area: "新宿区", pos: [35.6780, 139.7150], stations: ["国立競技場駅","千駄ケ谷駅"], officialUrl: "https://jns-e.com/event/" },
+  "forum":        { name: "東京国際フォーラム", area: "千代田区", pos: [35.6751, 139.7631], stations: ["有楽町駅"], officialUrl: "https://www.t-i-forum.co.jp/visitors/event/" },
+  "yoyogi":       { name: "国立代々木競技場", area: "渋谷区", pos: [35.6702, 139.6952], stations: ["代々木駅","原宿駅"], officialUrl: "https://www.jpnsport.go.jp/yoyogi/" },
+  "zepp-diver":   { name: "Zepp DiverCity", area: "江東区", pos: [35.6259, 139.7754], stations: ["お台場海浜公園駅"], officialUrl: "https://www.zepp.co.jp/hall/divercity/schedule/" },
+};
+
+const EVENTS = [
+  { id: 1, venueId: "tokyo-dome", name: "READ★DIVER TOUR 2026", genre: "music", date: DAY_DATES[0], start: "18:00", end: "20:30", scale: "large" },
+  { id: 2, venueId: "budokan", name: "全国空手道選手権大会", genre: "sports", date: DAY_DATES[0], start: "10:00", end: "17:00", scale: "medium" },
+  { id: 3, venueId: "bigsight", name: "東京デザインフェア", genre: "expo", date: DAY_DATES[0], start: "10:00", end: "18:00", scale: "large" },
+  { id: 4, venueId: "forum", name: "国際金融シンポジウム", genre: "other", date: DAY_DATES[0], start: "13:00", end: "19:00", scale: "small" },
+  { id: 5, venueId: "ariake-arena", name: "プロバスケットボール公式戦", genre: "sports", date: DAY_DATES[1], start: "19:00", end: "21:00", scale: "large" },
+  { id: 6, venueId: "kokuritsu", name: "国際親善サッカー", genre: "sports", date: DAY_DATES[1], start: "19:20", end: "21:10", scale: "large" },
+  { id: 7, venueId: "yoyogi", name: "冬季アイドルフェスティバル", genre: "music", date: DAY_DATES[1], start: "17:30", scale: "medium" },
+  { id: 8, venueId: "zepp-diver", name: "インディーズロックナイト", genre: "music", date: DAY_DATES[1], start: "18:30", end: "21:00", scale: "small" },
+  { id: 9, venueId: "tokyo-dome", name: "東京ドームフェスティバルグルメ祭", genre: "other", date: DAY_DATES[2], start: "10:00", end: "20:00", scale: "medium" },
+  { id: 10, venueId: "bigsight", name: "アニメ・キャラクターEXPO", genre: "expo", date: DAY_DATES[2], start: "9:30", end: "17:00", scale: "large" },
+  { id: 11, venueId: "forum", name: "クラシックコンサート", genre: "music", date: DAY_DATES[2], start: "19:00", end: "21:00", scale: "small" },
+  { id: 12, venueId: "budokan", name: "卒業式典（大学合同）", genre: "other", date: DAY_DATES[2], start: "10:00", end: "12:30", scale: "medium" },
+  { id: 13, venueId: "yoyogi", name: "格闘技グランプリ決勝", genre: "sports", date: DAY_DATES[3], start: "18:00", end: "21:30", scale: "large" },
+  { id: 14, venueId: "zepp-diver", name: "シンガーソングライターワンマン", genre: "music", date: DAY_DATES[3], start: "19:00", end: "21:00", scale: "small" },
+  { id: 15, venueId: "bigsight", name: "フード＆スイーツ見本市", genre: "expo", date: DAY_DATES[3], start: "10:00", scale: "medium" },
+  { id: 16, venueId: "tokyo-dome", name: "サマーロックフェスティバル Day1", genre: "music", date: DAY_DATES[4], start: "17:00", end: "21:00", scale: "large" },
+  { id: 17, venueId: "kokuritsu", name: "陸上競技国際大会", genre: "sports", date: DAY_DATES[4], start: "16:00", end: "19:30", scale: "large" },
+  { id: 18, venueId: "forum", name: "スタートアップカンファレンス", genre: "other", date: DAY_DATES[4], start: "10:00", scale: "medium" },
+  { id: 19, venueId: "tokyo-dome", name: "サマーロックフェスティバル Day2", genre: "music", date: DAY_DATES[5], start: "17:00", end: "21:00", scale: "large" },
+  { id: 20, venueId: "ariake-arena", name: "格闘技イベント TITLE MATCH", genre: "sports", date: DAY_DATES[5], start: "18:30", scale: "large" },
+  { id: 21, venueId: "budokan", name: "アイドルグループ単独公演", genre: "music", date: DAY_DATES[5], start: "18:00", end: "20:30", scale: "medium" },
+  { id: 22, venueId: "bigsight", name: "ゲーム・エンタメEXPO", genre: "expo", date: DAY_DATES[6], start: "9:00", end: "17:00", scale: "large" },
+  { id: 23, venueId: "yoyogi", name: "バレーボール国際試合", genre: "sports", date: DAY_DATES[6], start: "15:00", end: "18:00", scale: "medium" },
+  { id: 24, venueId: "zepp-diver", name: "サンデーライブサーキット", genre: "music", date: DAY_DATES[6], start: "16:00", end: "20:00", scale: "small" },
+];
+
+function baseScore(ev) {
+  const scale = SCALE[ev.scale].weight;
+  const mult = GENRE_MULT[ev.genre];
+  return Math.max(0, Math.min(100, Math.round(scale * mult)));
+}
+
+function toMinutes(hhmm) {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+function fmtMinutes(m) {
+  m = ((m % 1440) + 1440) % 1440;
+  return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+}
+
+// typical duration (minutes) by genre x scale, used only when the official end time isn't published
+const DURATION_TABLE = {
+  music:  { large: 180, medium: 150, small: 120 }, // ライブは公演尺がほぼ一定
+  sports: { large: 150, medium: 120, small: 90 },
+  expo:   { large: 480, medium: 420, small: 360 }, // 展示会は会場の開場時間に準拠しがち
+  other:  { large: 240, medium: 180, small: 120 },
+};
+const DURATION_BASIS = {
+  music: "音楽公演の標準的な尺(規模別)から推定",
+  sports: "同規模の競技イベントの平均試合時間から推定",
+  expo: "同規模展示会の標準開場時間から推定",
+  other: "同種イベントの平均開催時間から推定",
+};
+
+// returns { endMinutes, label, predicted, basis }
+function getEndInfo(ev) {
+  if (ev.end) {
+    return { endMinutes: toMinutes(ev.end), label: ev.end, predicted: false, basis: "" };
+  }
+  const startMinutes = toMinutes(ev.start);
+  const dur = (ev.durationHint) || DURATION_TABLE[ev.genre][ev.scale];
+  const endMinutes = startMinutes + dur;
+  return { endMinutes, label: fmtMinutes(endMinutes), predicted: true, basis: DURATION_BASIS[ev.genre] };
+}
+
+// ---- genre-specific crowd curves ----
+// Concerts/live shows: audience stays put for the whole show, almost no mid-show
+// in/out, then a sharp, concentrated exit spike right at/after the end.
+function curveMusic(sinceStart, fromEnd) {
+  if (fromEnd < -45) return 0;
+  if (fromEnd < -15) return 0.10 * (fromEnd + 45) / 30;
+  if (fromEnd < 0) return 0.10 + 0.90 * (fromEnd + 15) / 15;
+  if (fromEnd <= 55) return 1.0;
+  if (fromEnd <= 130) return 1.0 - (fromEnd - 55) / 75;
+  return 0;
+}
+// Sports: similar exit spike, but with a smaller halftime/interval bump mid-event.
+function curveSports(sinceStart, fromEnd, duration) {
+  const halfOffset = sinceStart - duration * 0.5;
+  const halftimeBump = Math.max(0, 0.26 * (1 - Math.abs(halfOffset) / 18));
+  if (fromEnd < -60) return halftimeBump;
+  if (fromEnd < 0) return Math.max(halftimeBump, 0.30 + 0.70 * (fromEnd + 60) / 60);
+  if (fromEnd <= 80) return 1.0;
+  if (fromEnd <= 170) return 1.0 - (fromEnd - 80) / 90;
+  return 0;
+}
+// Expos/fairs: continuous in/out flow all day at a moderate baseline, rising
+// toward closing time, then a short closing-time peak.
+function curveExpo(sinceStart, fromEnd) {
+  if (sinceStart < -20) return 0;
+  if (sinceStart < 0) return 0.18 * (sinceStart + 20) / 20;
+  if (fromEnd < -60) return 0.42; // steady flow throughout opening hours
+  if (fromEnd < 0) return 0.42 + 0.58 * (fromEnd + 60) / 60;
+  if (fromEnd <= 40) return 1.0; // closing-time peak
+  if (fromEnd <= 120) return 1.0 - (fromEnd - 40) / 80;
+  return 0;
+}
+// Other (ceremonies, conferences, symposiums): one moderate peak at the end,
+// wider/softer than a concert since attendees leave more gradually.
+function curveOther(sinceStart, fromEnd) {
+  if (fromEnd < -90) return 0;
+  if (fromEnd < 0) return 0.30 + 0.70 * (fromEnd + 90) / 90;
+  if (fromEnd <= 90) return 1.0;
+  if (fromEnd <= 190) return 1.0 - (fromEnd - 90) / 100;
+  return 0;
+}
+
+// unified: returns { score, fromEnd, endInfo }
+function evalEvent(ev, curMinutes) {
+  const startMinutes = toMinutes(ev.start);
+  const endInfo = getEndInfo(ev);
+  const duration = endInfo.endMinutes - startMinutes;
+  const sinceStart = curMinutes - startMinutes;
+  const fromEnd = curMinutes - endInfo.endMinutes;
+
+  let intensity;
+  if (ev.genre === "music") intensity = curveMusic(sinceStart, fromEnd);
+  else if (ev.genre === "sports") intensity = curveSports(sinceStart, fromEnd, duration);
+  else if (ev.genre === "expo") intensity = curveExpo(sinceStart, fromEnd);
+  else intensity = curveOther(sinceStart, fromEnd);
+
+  const score = Math.round(baseScore(ev) * intensity);
+  return { score, fromEnd, sinceStart, endInfo };
+}
+
+function phaseLabel(ev, sinceStart, fromEnd) {
+  if (ev.genre === "expo") {
+    if (fromEnd < -60) return "開場中（常時人の出入りあり）";
+    if (fromEnd < 0) return "閉場間際・退場増加";
+    if (fromEnd <= 40) return "閉場ピーク（警戒）";
+    if (fromEnd <= 120) return "収束中";
+    return "";
+  }
+  if (fromEnd < -45 && ev.genre !== "sports") return "開催中（大きな出入りなし）";
+  if (fromEnd < -45 && ev.genre === "sports") return "試合中（ハーフタイム等で一部出入り）";
+  if (fromEnd < 0) return "終了間近・退場開始";
+  if (fromEnd <= 90) return "退場ピーク（警戒）";
+  if (fromEnd <= 190) return "収束中";
+  return "";
+}
+
+function thermalColor(t) {
+  const stops = [
+    [0.00, [74, 123, 166]], [0.30, [95, 167, 154]], [0.55, [209, 172, 82]],
+    [0.78, [207, 135, 82]], [1.00, [194, 88, 92]],
+  ];
+  t = Math.max(0, Math.min(1, t));
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [t0, c0] = stops[i], [t1, c1] = stops[i + 1];
+    if (t >= t0 && t <= t1) {
+      const f = (t - t0) / (t1 - t0);
+      const r = Math.round(c0[0] + (c1[0] - c0[0]) * f);
+      const g = Math.round(c0[1] + (c1[1] - c0[1]) * f);
+      const b = Math.round(c0[2] + (c1[2] - c0[2]) * f);
+      return "rgb(" + r + "," + g + "," + b + ")";
+    }
+  }
+  return "rgb(239,68,68)";
+}
+function scoreLabel(score) {
+  if (score < 30) return "平常";
+  if (score < 50) return "やや混雑";
+  if (score < 70) return "混雑";
+  if (score < 85) return "非常に混雑";
+  return "大混雑注意";
+}
+
+// ---------- timeline state ----------
+const MINUTES_PER_STEP = 60;
+const STEPS_PER_DAY = (24 * 60) / MINUTES_PER_STEP; // 24 steps/day = 1-hour resolution
+let activeDays = 7; // currently selected timeline period (1, 3, or 7 days)
+let TOTAL_STEPS = activeDays * STEPS_PER_DAY;
+let currentStep = (18 * 60) / MINUTES_PER_STEP; // default: day0 18:00
+
+function stepToDateHour(step) {
+  const dayIdx = Math.floor(step / STEPS_PER_DAY);
+  const minutesOfDay = (step % STEPS_PER_DAY) * MINUTES_PER_STEP;
+  const hour = Math.floor(minutesOfDay / 60);
+  const minute = Math.floor(minutesOfDay % 60);
+  return { date: DAY_DATES[dayIdx], hour, minute, dayIdx };
+}
+
+function formatDateLabel(dateStr, dayIdx) {
+  const d = new Date(dateStr + "T00:00:00");
+  const wd = ["日","月","火","水","木","金","土"][d.getDay()];
+  const prefix = dayIdx === 0 ? "本日" : dayIdx === 1 ? "明日" : dayIdx === 2 ? "明後日" : dayIdx + "日後";
+  return prefix + " ・ " + (d.getMonth()+1) + "/" + d.getDate() + "(" + wd + ")";
+}
+
+// ---------- map setup ----------
+const map = L.map("map", { scrollWheelZoom: true, zoomControl: true }).setView([35.665, 139.745], 12);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+  subdomains: "abcd",
+  maxZoom: 19,
+}).addTo(map);
+
+let layerGroup = L.layerGroup().addTo(map);
+let staticLayer = L.layerGroup().addTo(map);
+let stationLayer = L.layerGroup().addTo(map);
+let stationLabelsVisible = true;
+const staticVenueMarkers = {}; // venueId -> dot
+const staticStationMarkers = {}; // stationName -> dot
+
+function labelIcon(text, cls) {
+  return L.divIcon({ className: cls, html: text, iconSize: null });
+}
+
+// always-visible venue dots + name labels (independent of congestion state)
+function buildStaticVenueLayer() {
+  Object.keys(VENUES).forEach((venueId) => {
+    const venue = VENUES[venueId];
+    const dot = L.circleMarker(venue.pos, {
+      radius: 6, color: "#3a4457", weight: 2, fillColor: "#171c24", fillOpacity: 1,
+    }).addTo(staticLayer);
+    dot.bindPopup(
+      '<div class="tt-title">' + venue.name + '</div>' +
+      '<div class="tt-row">' + venue.area + '</div>' +
+      '<div class="tt-hint">最寄り駅： ' + venue.stations.join("、") + '</div>' +
+      (venue.officialUrl
+        ? '<div class="tt-source"><b>参照元：</b><a href="' + venue.officialUrl + '" target="_blank" rel="noopener noreferrer">' + venue.name + ' 公式サイト ↗</a></div>'
+        : '')
+    );
+    L.marker(venue.pos, { icon: labelIcon(venue.name, "venue-label-icon"), interactive: false, zIndexOffset: 500 }).addTo(staticLayer);
+    staticVenueMarkers[venueId] = dot;
+  });
+}
+
+// always-visible station dots + name labels (toggleable)
+function buildStaticStationLayer() {
+  Object.keys(STATIONS).forEach((stName) => {
+    const st = STATIONS[stName];
+    const lineChips = st.lines.map((lid) =>
+      '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:8px;">' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:' + LINE[lid].color + ';display:inline-block;"></span>' +
+        LINE[lid].name + '</span>'
+    ).join("");
+    const dot = L.circleMarker(st.pos, {
+      radius: 4, color: "#5a6478", weight: 2, fillColor: "#161b26", fillOpacity: 1,
+    }).addTo(stationLayer);
+    dot.bindPopup(
+      '<div class="tt-title">' + stName + '</div>' +
+      '<div class="tt-row" style="margin-top:5px;">' + lineChips + '</div>'
+    );
+    const label = L.marker(st.pos, { icon: labelIcon(stName, "station-label-icon"), interactive: false, zIndexOffset: 300 }).addTo(stationLayer);
+    staticStationMarkers[stName] = { dot, label };
+  });
+}
+
+function toggleStationLabels() {
+  stationLabelsVisible = !stationLabelsVisible;
+  if (stationLabelsVisible) { map.addLayer(stationLayer); } else { map.removeLayer(stationLayer); }
+  const btn = document.getElementById("stationToggleBtn");
+  btn.classList.toggle("active", stationLabelsVisible);
+  btn.querySelector(".label").textContent = stationLabelsVisible ? "駅名を表示中" : "駅名を非表示中";
+}
+
+function focusStation(stName) {
+  const st = STATIONS[stName];
+  if (!st) return;
+  if (!stationLabelsVisible) toggleStationLabels();
+  map.flyTo(st.pos, 16, { duration: 0.7 });
+  const marker = staticStationMarkers[stName];
+  if (marker) setTimeout(() => marker.dot.openPopup(), 350);
+}
+
+const TOKYO_OVERVIEW = { pos: [35.665, 139.745], zoom: 12 };
+
+function focusVenue(venueId) {
+  if (venueId === "__all__") {
+    map.flyTo(TOKYO_OVERVIEW.pos, TOKYO_OVERVIEW.zoom, { duration: 0.7 });
+    map.closePopup();
+    document.querySelectorAll(".venue-side-item").forEach((el) => {
+      el.classList.toggle("selected", el.dataset.venue === "__all__");
+    });
+    closeVenueSidebar();
+    return;
+  }
+  const venue = VENUES[venueId];
+  if (!venue) return;
+  map.flyTo(venue.pos, 15, { duration: 0.7 });
+  const dot = staticVenueMarkers[venueId];
+  if (dot) setTimeout(() => dot.openPopup(), 350);
+
+  document.querySelectorAll(".venue-side-item").forEach((el) => {
+    el.classList.toggle("selected", el.dataset.venue === venueId);
+  });
+  closeVenueSidebar();
+}
+
+function buildVenueSidebar() {
+  const list = document.getElementById("venueSidebarList");
+  const ids = Object.keys(VENUES);
+  document.getElementById("venueCount").textContent = ids.length + "会場";
+
+  const allItem =
+    '<div class="venue-side-item all-tokyo" data-venue="__all__">' +
+      '<div class="vname">🗼 東京都全域</div>' +
+      '<div class="varea">地図をモニタリング範囲全体に戻す</div>' +
+    '</div>';
+
+  const venueItems = ids.map((id) => {
+    const v = VENUES[id];
+    return (
+      '<div class="venue-side-item" data-venue="' + id + '">' +
+        '<div class="vname"><span class="vdotstatus" id="vdot-' + id + '"></span>' + v.name + '</div>' +
+        '<div class="varea">' + v.area + '</div>' +
+        '<div class="vstations">' + v.stations.join("、") + '</div>' +
+      '</div>'
+    );
+  }).join("");
+
+  list.innerHTML = allItem + venueItems;
+  list.querySelectorAll(".venue-side-item").forEach((el) => {
+    el.addEventListener("click", () => focusVenue(el.dataset.venue));
+  });
+}
+
+function buildStationSidebar() {
+  const list = document.getElementById("stationSidebarList");
+  const stationNames = Object.keys(STATIONS);
+  document.getElementById("stationCount").textContent = stationNames.length + "駅";
+
+  // group station names by line id
+  const byLine = {};
+  Object.keys(LINE).forEach((lid) => { byLine[lid] = []; });
+  stationNames.forEach((stName) => {
+    STATIONS[stName].lines.forEach((lid) => {
+      if (byLine[lid]) byLine[lid].push(stName);
+    });
+  });
+
+  let html = "";
+  Object.keys(LINE).forEach((lid) => {
+    const names = byLine[lid];
+    if (!names.length) return;
+    html += '<div class="line-group">' +
+      '<div class="line-group-title"><span class="ldot" style="background:' + LINE[lid].color + '"></span>' + LINE[lid].name + '</div>';
+    names.forEach((stName) => {
+      html += '<div class="station-side-item" data-station="' + stName + '">' + stName + '</div>';
+    });
+    html += '</div>';
+  });
+  list.innerHTML = html;
+  list.querySelectorAll(".station-side-item").forEach((el) => {
+    el.addEventListener("click", () => focusStation(el.dataset.station));
+  });
+}
+
+function switchSidebarTab(tab) {
+  const isVenue = tab === "venue";
+  document.getElementById("tabVenueBtn").classList.toggle("active", isVenue);
+  document.getElementById("tabStationBtn").classList.toggle("active", !isVenue);
+  document.getElementById("sidebarTitleVenue").style.display = isVenue ? "" : "none";
+  document.getElementById("venueSidebarList").style.display = isVenue ? "" : "none";
+  document.getElementById("sidebarTitleStation").style.display = isVenue ? "none" : "";
+  document.getElementById("stationSidebarList").style.display = isVenue ? "none" : "";
+}
+
+function openVenueSidebar() {
+  document.getElementById("venueSidebar").classList.add("open");
+  document.getElementById("sidebarScrim").classList.add("open");
+}
+function closeVenueSidebar() {
+  if (window.innerWidth > 760) return;
+  document.getElementById("venueSidebar").classList.remove("open");
+  document.getElementById("sidebarScrim").classList.remove("open");
+}
+function setupVenueSidebarToggle() {
+  document.getElementById("venueToggleBtn").addEventListener("click", openVenueSidebar);
+  document.getElementById("sidebarScrim").addEventListener("click", closeVenueSidebar);
+  document.getElementById("tabVenueBtn").addEventListener("click", () => switchSidebarTab("venue"));
+  document.getElementById("tabStationBtn").addEventListener("click", () => switchSidebarTab("station"));
+  document.getElementById("stationToggleBtn").addEventListener("click", toggleStationLabels);
+}
+
+function render() {
+  const genreFilter = document.getElementById("genreFilter").value;
+  const effStep = Math.floor(currentStep); // data only needs whole-hour (HH:00) resolution
+  const { date: curDate, hour: curHour, dayIdx } = stepToDateHour(effStep);
+  const curMinutes = curHour * 60;
+
+  document.getElementById("dateLabel").textContent = formatDateLabel(curDate, dayIdx);
+  document.getElementById("timeLabel").textContent = String(curHour).padStart(2, "0") + ":00";
+
+  layerGroup.clearLayers();
+  Object.keys(VENUES).forEach((id) => {
+    const dotEl = document.getElementById("vdot-" + id);
+    if (dotEl) { dotEl.style.background = "#3a4457"; dotEl.style.boxShadow = "none"; }
+  });
+
+  const venueActive = {};
+  let maxPhase = "";
+  let maxScore = -1;
+
+  EVENTS.forEach((ev) => {
+    if (ev.date !== curDate) return;
+    if (genreFilter !== "all" && ev.genre !== genreFilter) return;
+    const { score, fromEnd, sinceStart, endInfo } = evalEvent(ev, curMinutes);
+    if (score <= 3) return;
+    if (!venueActive[ev.venueId] || score > venueActive[ev.venueId].score) {
+      venueActive[ev.venueId] = { ev, score, fromEnd, sinceStart, endInfo };
+    }
+  });
+
+  const activeVenueIds = Object.keys(venueActive);
+  document.getElementById("countLabel").textContent = activeVenueIds.length + "会場で混雑影響中";
+
+  const drawnStations = {};
+
+  activeVenueIds.forEach((venueId) => {
+    const venue = VENUES[venueId];
+    const { ev, score, fromEnd, sinceStart, endInfo } = venueActive[venueId];
+    const t = score / 100;
+    const color = thermalColor(t);
+    const weightPx = 3 + t * 8;
+    const phase = phaseLabel(ev, sinceStart, fromEnd);
+    if (score > maxScore) { maxScore = score; maxPhase = phase; }
+    const endText = endInfo.predicted
+      ? '<span style="color:#e0b93d">' + endInfo.label + ' (予測)</span>'
+      : endInfo.label;
+
+    const dotEl = document.getElementById("vdot-" + venueId);
+    if (dotEl) { dotEl.style.background = color; dotEl.style.boxShadow = "0 0 6px " + color + "99"; }
+
+    const sourceLinkHtml = venue.officialUrl
+      ? '<div class="tt-source"><b>参照元：</b><a href="' + venue.officialUrl + '" target="_blank" rel="noopener noreferrer">' + venue.name + ' 公式サイト ↗</a></div>'
+      : '';
+
+    L.circle(venue.pos, {
+      radius: 220 + t * 500,
+      color: color, weight: 0, fillColor: color, fillOpacity: 0.10 + t * 0.14,
+    }).addTo(layerGroup);
+
+    venue.stations.forEach((stName) => {
+      const stEntry = STATIONS[stName];
+      if (!stEntry) return;
+      const stPos = stEntry.pos;
+
+      const line = L.polyline([venue.pos, stPos], {
+        color: color, weight: weightPx, opacity: 0.92,
+        lineCap: "round", dashArray: "10 14", className: "flow-line",
+      }).addTo(layerGroup);
+
+      const popupHtml =
+        '<div class="tt-title">' + venue.name + ' → ' + stName + '</div>' +
+        '<div class="tt-row"><b>開催イベント：</b>' + ev.name + '</div>' +
+        '<div class="tt-row">' + ev.date + ' ' + ev.start + '〜' + endText + '（' + SCALE[ev.scale].label + '・' + GENRE_LABEL[ev.genre] + '）</div>' +
+        '<div class="tt-level" style="color:' + color + '">' + scoreLabel(score) + '　SCORE ' + score + '</div>' +
+        '<div class="tt-hint">現在フェーズ： ' + phase + '</div>' +
+        (endInfo.predicted ? '<div class="tt-hint">※終了時刻未公開のため、' + endInfo.basis + '</div>' : '') +
+        sourceLinkHtml;
+      line.bindPopup(popupHtml);
+      line.on("mouseover", function () { this.setStyle({ opacity: 1, weight: weightPx + 2 }); });
+      line.on("mouseout", function () { this.setStyle({ opacity: 0.92, weight: weightPx }); });
+      const elLine = line.getElement && line.getElement();
+      if (elLine) elLine.style.filter = "drop-shadow(0 0 5px " + color + ")";
+
+      if (!drawnStations[stName]) {
+        L.circleMarker(stPos, { radius: 5, color: color, weight: 2, fillColor: "#0d1117", fillOpacity: 1 }).addTo(layerGroup);
+        drawnStations[stName] = true;
+      }
+    });
+
+    const venueMarker = L.circleMarker(venue.pos, {
+      radius: 9, color: "#161b26", weight: 2, fillColor: color, fillOpacity: 1,
+    }).addTo(layerGroup);
+    venueMarker.bindPopup(
+      '<div class="tt-title">' + venue.name + '</div>' +
+      '<div class="tt-row">' + venue.area + '</div>' +
+      '<div class="tt-row"><b>開催イベント：</b>' + ev.name + '</div>' +
+      '<div class="tt-row">' + ev.date + ' ' + ev.start + '〜' + endText + '</div>' +
+      '<div class="tt-level" style="color:' + color + '">' + scoreLabel(score) + '　SCORE ' + score + '</div>' +
+      '<div class="tt-hint">現在フェーズ： ' + phase + '</div>' +
+      (endInfo.predicted ? '<div class="tt-hint">※終了時刻未公開のため、' + endInfo.basis + '</div>' : '') +
+      sourceLinkHtml
+    );
+  });
+
+  document.getElementById("phaseBadge").textContent = activeVenueIds.length
+    ? "最大警戒: " + scoreLabel(maxScore) + "（" + maxPhase + "）"
+    : "この時間帯は目立った混雑要因なし";
+}
+
+// compute the max congestion score across all venues at a given step (used for the heat strip)
+function maxScoreAtStep(step, genreFilter, bounds) {
+  const { date: curDate, hour: curHour, minute: curMinute } = stepToDateHour(step);
+  const curMinutes = curHour * 60 + curMinute;
+  let max = 0;
+  EVENTS.forEach((ev) => {
+    if (ev.date !== curDate) return;
+    if (genreFilter !== "all" && ev.genre !== genreFilter) return;
+    if (bounds) {
+      const venue = VENUES[ev.venueId];
+      if (!venue || !bounds.contains(venue.pos)) return;
+    }
+    const { score } = evalEvent(ev, curMinutes);
+    if (score > max) max = score;
+  });
+  return max;
+}
+
+let heatScores = [];
+
+function buildHeatStrip() {
+  const genreFilter = document.getElementById("genreFilter").value;
+  const bounds = map.getBounds();
+  const strip = document.getElementById("heatStrip");
+  heatScores = [];
+  const stops = [];
+  for (let s = 0; s < TOTAL_STEPS; s++) {
+    const score = maxScoreAtStep(s, genreFilter, bounds);
+    heatScores.push(score);
+    const color = score > 3 ? thermalColor(score / 100) : "#20283a";
+    const pct = (s / (TOTAL_STEPS - 1)) * 100;
+    stops.push(color + " " + pct.toFixed(3) + "%");
+  }
+  strip.style.background = "linear-gradient(90deg, " + stops.join(", ") + ")";
+}
+
+let boundsSyncTimer = null;
+function setupMapBoundsSync() {
+  map.on("moveend", () => {
+    clearTimeout(boundsSyncTimer);
+    boundsSyncTimer = setTimeout(() => {
+      buildHeatStrip();
+      const badge = document.getElementById("phaseBadge");
+      if (badge) {
+        badge.classList.add("pulse-once");
+        setTimeout(() => badge.classList.remove("pulse-once"), 400);
+      }
+    }, 200);
+  });
+}
+
+function updateNowMarker() {
+  const pct = (currentStep / (TOTAL_STEPS - 1)) * 100;
+  document.getElementById("nowMarker").style.left = pct + "%";
+}
+
+function setupTimelineHover() {
+  const wrap = document.getElementById("hoverWrap");
+  const marker = document.getElementById("hoverMarker");
+  const tooltip = document.getElementById("hoverTooltip");
+
+  wrap.addEventListener("mousemove", (e) => {
+    const rect = wrap.getBoundingClientRect();
+    const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
+    const pct = x / rect.width;
+    const step = Math.round(pct * (TOTAL_STEPS - 1));
+    const { date, hour, minute } = stepToDateHour(step);
+    const d = new Date(date + "T00:00:00");
+    const wd = ["日","月","火","水","木","金","土"][d.getDay()];
+    const score = heatScores[step] || 0;
+
+    marker.style.left = (step / (TOTAL_STEPS - 1)) * 100 + "%";
+    marker.style.display = "block";
+    tooltip.style.left = x + "px";
+    tooltip.style.display = "block";
+    document.getElementById("htTime").textContent = (d.getMonth()+1) + "/" + d.getDate() + "(" + wd + ") " + String(hour).padStart(2,"0") + ":" + String(minute).padStart(2,"0");
+    const scoreEl = document.getElementById("htScore");
+    if (score > 3) {
+      scoreEl.textContent = "・ " + scoreLabel(score) + " (" + score + ")";
+      scoreEl.style.color = thermalColor(score / 100);
+    } else {
+      scoreEl.textContent = "・ 平常";
+      scoreEl.style.color = "#6d7684";
+    }
+  });
+  wrap.addEventListener("mouseleave", () => {
+    marker.style.display = "none";
+    tooltip.style.display = "none";
+  });
+
+  // click (or drag) anywhere on the heat strip to jump the playhead there
+  function seekFromEvent(e) {
+    const rect = wrap.getBoundingClientRect();
+    const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
+    const pct = x / rect.width;
+    currentStep = Math.round(pct * (TOTAL_STEPS - 1));
+    document.getElementById("tlSlider").value = currentStep;
+    updateAll();
+  }
+  const heatStripEl = document.getElementById("heatStrip");
+  heatStripEl.addEventListener("click", seekFromEvent);
+  heatStripEl.addEventListener("mousedown", (e) => {
+    seekFromEvent(e);
+    const onMove = (ev) => seekFromEvent(ev);
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  });
+}
+
+// ---------- timeline UI ----------
+function buildDayTicks() {
+  const wrap = document.getElementById("dayTicks");
+  wrap.innerHTML = "";
+  for (let d = 0; d < activeDays; d++) {
+    const dateStr = DAY_DATES[d];
+    const hasEvent = EVENTS.some((ev) => ev.date === dateStr);
+    const date = new Date(dateStr + "T00:00:00");
+    const wd = ["日","月","火","水","木","金","土"][date.getDay()];
+    const prefix = d === 0 ? "本日" : d === 1 ? "明日" : d === 2 ? "明後日" : d + "日後";
+
+    const div = document.createElement("div");
+    div.className = "day-tick";
+    div.dataset.day = d;
+    div.innerHTML =
+      '<div class="alert-dot ' + (hasEvent ? "" : "none") + '"></div>' +
+      '<div class="dlabel">' + (date.getMonth()+1) + '/' + date.getDate() + '(' + wd + ')</div>' +
+      '<div class="dsub">' + prefix + '</div>';
+    div.addEventListener("click", () => {
+      currentStep = d * STEPS_PER_DAY + (18 * 60) / MINUTES_PER_STEP; // jump to 18:00 of that day
+      document.getElementById("tlSlider").value = currentStep;
+      updateAll();
+    });
+    wrap.appendChild(div);
+  }
+}
+
+function updateDayTickHighlight() {
+  const { dayIdx } = stepToDateHour(currentStep);
+  document.querySelectorAll(".day-tick").forEach((el) => {
+    el.classList.toggle("active", Number(el.dataset.day) === dayIdx);
+  });
+}
+
+function updateAll() {
+  render();
+  updateDayTickHighlight();
+  updateNowMarker();
+}
+
+let playing = false;
+let playRAF = null;
+let lastFrameTime = 0;
+let lastRenderedHourStep = null;
+// Windy-like pace: roughly 1 real second = 1 simulated hour, then halved for
+// a calmer read on this thermal congestion view. That's the base (1-day) speed;
+// longer periods play proportionally faster so a full loop doesn't take forever.
+const WINDY_BASE_STEPS_PER_SECOND = 1; // 1 sec = 1 hour (step = 1 hour now)
+const PLAYBACK_SPEED_MULTIPLIER = 0.5;
+const BASE_PLAYBACK_SPEED = WINDY_BASE_STEPS_PER_SECOND * PLAYBACK_SPEED_MULTIPLIER; // 1-day speed
+const PERIOD_SPEED_FACTOR = { 1: 1, 3: 2, 7: 3 }; // 3-day = 2x, 1-week = 3x the 1-day speed
+let stepsPerSecond = BASE_PLAYBACK_SPEED;
+
+function updatePlaybackSpeed() {
+  stepsPerSecond = BASE_PLAYBACK_SPEED * (PERIOD_SPEED_FACTOR[activeDays] || 1);
+}
+
+function playLoop(ts) {
+  if (!playing) return;
+  if (!lastFrameTime) lastFrameTime = ts;
+  const dt = ts - lastFrameTime;
+  lastFrameTime = ts;
+
+  // the playhead position itself glides smoothly every frame...
+  currentStep = (currentStep + (dt / 1000) * stepsPerSecond) % TOTAL_STEPS;
+  document.getElementById("tlSlider").value = currentStep;
+  updateNowMarker();
+
+  // ...but the actual congestion data only needs whole-hour (HH:00) resolution,
+  // so the map/markers only redraw when the hour actually changes (no per-frame flicker)
+  const hourStep = Math.floor(currentStep);
+  if (hourStep !== lastRenderedHourStep) {
+    lastRenderedHourStep = hourStep;
+    render();
+    updateDayTickHighlight();
+  }
+
+  playRAF = requestAnimationFrame(playLoop);
+}
+
+function togglePlay() {
+  playing = !playing;
+  const btn = document.getElementById("playBtn");
+  btn.textContent = playing ? "❚❚" : "▶";
+  if (playing) {
+    lastFrameTime = 0;
+    lastRenderedHourStep = null;
+    playRAF = requestAnimationFrame(playLoop);
+  } else if (playRAF) {
+    cancelAnimationFrame(playRAF);
+  }
+}
+
+function setPeriod(days) {
+  activeDays = days;
+  TOTAL_STEPS = activeDays * STEPS_PER_DAY;
+  currentStep = Math.min(currentStep, TOTAL_STEPS - 1);
+  updatePlaybackSpeed();
+
+  const slider = document.getElementById("tlSlider");
+  slider.max = TOTAL_STEPS - 1;
+  slider.value = currentStep;
+
+  document.querySelectorAll("#periodSwitch button").forEach((btn) => {
+    btn.classList.toggle("active", Number(btn.dataset.days) === days);
+  });
+
+  buildDayTicks();
+  buildHeatStrip();
+  updateAll();
+}
+
+function init() {
+  const slider = document.getElementById("tlSlider");
+  slider.max = TOTAL_STEPS - 1;
+  slider.value = currentStep;
+  updatePlaybackSpeed();
+
+  buildDayTicks();
+  buildHeatStrip();
+  buildStaticVenueLayer();
+  buildStaticStationLayer();
+  buildVenueSidebar();
+  buildStationSidebar();
+  setupTimelineHover();
+  setupVenueSidebarToggle();
+  setupMapBoundsSync();
+  updateAll();
+
+  document.querySelectorAll("#periodSwitch button").forEach((btn) => {
+    btn.addEventListener("click", () => setPeriod(Number(btn.dataset.days)));
+  });
+
+  slider.addEventListener("input", () => {
+    currentStep = Number(slider.value);
+    updateAll();
+  });
+  document.getElementById("genreFilter").addEventListener("change", () => {
+    buildHeatStrip();
+    updateAll();
+  });
+  document.getElementById("playBtn").addEventListener("click", togglePlay);
+}
+
+init();
+</script>
+</body>
+</html>
