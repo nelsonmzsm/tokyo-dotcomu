@@ -1,0 +1,42 @@
+name: Scrape venue events
+
+on:
+  schedule:
+    # 1日2回（JST 07:00 / 19:00 ≒ UTC 22:00 / 10:00）。仕様書10章「1日1〜2回」に準拠
+    - cron: "0 22 * * *"
+    - cron: "0 10 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - run: npm run seed
+
+      # SQLiteファイルへの同時書き込みを避けるため、会場別に直列実行する
+      # （各会場は cli.ts 内部で例外を握りつぶすため、1会場の失敗が他会場を止めない）
+      - name: Scrape all venues
+        run: npm run scrape -- --venue=tokyo-dome
+      - run: npm run scrape -- --venue=bigsight
+      - run: npm run scrape -- --venue=ariake-arena
+      - run: npm run scrape -- --venue=forum
+      - run: npm run scrape -- --venue=kokuritsu
+      - run: npm run scrape -- --venue=zepp-diver
+
+      - name: Commit updated DB if changed
+        run: |
+          git config user.name "tokyo-dotcomu-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add db/tokyo-dotcomu.sqlite
+          git diff --cached --quiet || git commit -m "chore: update scraped event data [skip ci]"
+          git push
