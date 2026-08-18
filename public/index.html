@@ -1009,6 +1009,7 @@ let stationLabelsVisible = true;
 // 一定以上ズームした時だけ駅名テキストを表示する（駅の点自体は常時表示のまま）
 const STATION_LABEL_MIN_ZOOM = 14;
 const staticVenueMarkers = {}; // venueId -> dot
+let activeVenueMarkers = {}; // venueId -> このフレームで混雑イベント中の丸（render()で毎回作り直す）
 const staticStationMarkers = {}; // stationName -> dot
 
 function labelIcon(text, cls) {
@@ -1096,7 +1097,8 @@ function focusVenue(venueId) {
   const venue = VENUES[venueId];
   if (!venue) return;
   map.flyTo(venue.pos, 15, { duration: 0.7 });
-  const dot = staticVenueMarkers[venueId];
+  // 現在選択中の時刻に混雑イベントが進行中なら、詳細入りのポップアップを優先して開く
+  const dot = activeVenueMarkers[venueId] || staticVenueMarkers[venueId];
   if (dot) setTimeout(() => dot.openPopup(), 350);
 
   document.querySelectorAll(".venue-side-item").forEach((el) => {
@@ -1215,6 +1217,7 @@ function render() {
   document.getElementById("timeLabel").textContent = String(curHour).padStart(2, "0") + ":00";
 
   layerGroup.clearLayers();
+  activeVenueMarkers = {};
   Object.keys(VENUES).forEach((id) => {
     const dotEl = document.getElementById("vdot-" + id);
     if (dotEl) { dotEl.style.background = "#3a4457"; dotEl.style.boxShadow = "none"; }
@@ -1307,6 +1310,7 @@ function render() {
       (endInfo.predicted ? '<div class="tt-hint">※終了時刻未公開のため、' + endInfo.basis + '</div>' : '') +
       sourceLinkHtml
     );
+    activeVenueMarkers[venueId] = venueMarker;
   });
 
   document.getElementById("phaseBadge").textContent = activeVenueIds.length
