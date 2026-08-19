@@ -10,5 +10,9 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping deployed service
-        run: curl -sf --max-time 20 https://tokyo-dotcomu.onrender.com/api/venues > /dev/null
+      # GitHub Actionsの定期実行は間隔が厳密でなく(*/10でも実際は20〜40分空くことがある)、
+      # その間にRenderがスリープするとコールドスタートに時間がかかるため、
+      # 短いタイムアウトだと「起こしている途中」で失敗扱いになってしまう。
+      # 起動が遅くても最後まで待ってから成功/失敗を判定するようにする。
+      - name: Ping deployed service (with retries, generous timeout for cold start)
+        run: curl -sf --max-time 90 --retry 2 --retry-delay 5 https://tokyo-dotcomu.onrender.com/api/venues > /dev/null
